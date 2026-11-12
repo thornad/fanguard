@@ -46,9 +46,17 @@ final class Model: ObservableObject {
         return boosting ? "fan.fill" : "fan"
     }
 
+    /// Shown in the menu bar next to the temperature; a per-user preference of the app only.
+    @Published var showFanInMenuBar: Bool = UserDefaults.standard.object(forKey: "showFanInMenuBar") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showFanInMenuBar, forKey: "showFanInMenuBar") }
+    }
+
     var menuText: String {
         guard daemonAlive, let s = status, s.gpuTemp.isFinite else { return "--" }
-        return "\(Int(s.gpuTemp.rounded()))°"
+        let temp = "\(Int(s.gpuTemp.rounded()))°"
+        guard showFanInMenuBar, !s.fanRPM.isEmpty else { return temp }
+        let rpm = s.fanRPM.reduce(0, +) / Double(s.fanRPM.count)
+        return temp + " " + String(format: "%.1fk", rpm / 1000)
     }
 
     func refresh() {
@@ -100,6 +108,8 @@ struct PanelView: View {
                 .disabled(model.config.mode != .curve)
                 .opacity(model.config.mode == .curve ? 1 : 0.45)
             if let e = model.saveError { Text(e).font(.caption).foregroundStyle(.red) }
+            Toggle("Show fan speed in the menu bar", isOn: $model.showFanInMenuBar)
+                .font(.callout)
             Divider()
             HStack {
                 Button("Defaults") { model.resetDefaults() }
