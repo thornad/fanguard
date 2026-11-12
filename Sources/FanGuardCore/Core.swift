@@ -19,7 +19,7 @@ public struct Config: Codable, Equatable, Sendable {
     /// Below this GPU temperature the fans stay on macOS automatic (until boost engages).
     public var startTemp: Double = 60
     /// Fan speed reached at `midTemp`.
-    public var midRPM: Double = 3200
+    public var midRPM: Double = 3050
     public var midTemp: Double = 65
     /// Between `midTemp` and this temperature the fans hold `midRPM`; at or above it, full speed.
     public var fullTemp: Double = 90

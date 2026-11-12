@@ -34,13 +34,13 @@ A sweep with 3 × 64k prompts per fan speed (see jundot/omlx#5121) gave these re
 | GPU temperature | Fans |
 |---|---|
 | below 60 °C | macOS automatic |
-| 60 → 65 °C | 2,000 → 3,200 rpm |
-| 65 → 90 °C | hold 3,200 rpm |
+| 60 → 65 °C | 2,000 → 3,050 rpm |
+| 65 → 90 °C | hold 3,050 rpm |
 | 90 °C and above | maximum |
 
 Once boosted, FanGuard hands the fans back to macOS only after the GPU stays below 55 °C for 30 s. The test machine idles at about 48–53 °C, so idle and light use stay with macOS. With this quieter curve, sustained back-to-back 64k prefills throttle mildly (about 8%) from the third prompt; full-speed fans delay that by one prompt.
 
-**During a boost the fans only speed up.** They hold the highest speed reached (up to the 3,200 rpm target) through short pauses between prompts, instead of winding down and up again. Full speed drops back to the target only once the GPU is 2 °C under the full-speed point.
+**During a boost the fans only speed up.** They hold the highest speed reached (up to the target speed, 3,050 rpm by default) through short pauses between prompts, instead of winding down and up again. Full speed drops back to the target only once the GPU is 2 °C under the full-speed point.
 
 **Logs:** `/var/log/fanguard.log` holds the current run or day; it moves to `fanguard.log.1` on each start and at the first message of each day, so there are never more than two files. Every fan speed change is logged.
 

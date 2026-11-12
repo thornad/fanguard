@@ -11,7 +11,7 @@ final class CurveTests: XCTestCase {
 
     func testShippedDefaults() {
         let d = Config()
-        XCTAssertEqual([d.startTemp, d.midRPM, d.midTemp, d.fullTemp, d.releaseTemp, d.holdSeconds], [60, 3200, 65, 90, 55, 30])
+        XCTAssertEqual([d.startTemp, d.midRPM, d.midTemp, d.fullTemp, d.releaseTemp, d.holdSeconds], [60, 3050, 65, 90, 55, 30])
     }
 
     func testStaysAutoBelowStart() {
