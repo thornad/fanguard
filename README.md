@@ -23,7 +23,7 @@ A sweep with 3 × 64k prompts per fan speed (see jundot/omlx#5121) gave these re
   - It sets both fans through the `smc` tool bundled with Stats.app.
   - It runs root-owned copies of all three binaries from `/usr/local/libexec/fanguard`.
 - **`FanGuard.app`** is the menu bar app.
-  - The menu bar shows the GPU temperature and, optionally, the average fan speed (for example `62° 3050 rpm`).
+  - The menu bar shows the GPU temperature and, optionally, the average fan speed (for example `62° 3050`).
   - It shows GPU temperature, clock, power and fan speed.
   - It edits the curve, and switches between **Curve**, **Max** and **macOS** modes.
 - **Shared files** in `/Users/Shared/FanGuard`:

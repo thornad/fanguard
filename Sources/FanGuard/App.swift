@@ -56,7 +56,7 @@ final class Model: ObservableObject {
         let temp = "\(Int(s.gpuTemp.rounded()))°"
         guard showFanInMenuBar, !s.fanRPM.isEmpty else { return temp }
         let rpm = s.fanRPM.reduce(0, +) / Double(s.fanRPM.count)
-        return temp + " " + "\(Int(rpm.rounded())) rpm"
+        return temp + " " + "\(Int(rpm.rounded()))"
     }
 
     func refresh() {
