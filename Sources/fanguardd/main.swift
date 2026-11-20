@@ -94,7 +94,8 @@ final class Controller {
         var note = ""
         var want: Double?
         let cltm = gpu.sample()
-        let burstLeft = burst.update(cltm: cltm, config: config, now: Date())
+        let busyNow = d["gpu_active_ratio"] as? Double
+        let burstLeft = burst.update(cltm: cltm, config: config, now: Date(), gpuBusy: busyNow)
         if (burstLeft != nil) != burstWasOn {
             log(burstLeft != nil
                 ? "throttle burst: full speed for \(Int(config.throttleBurstSeconds)) s (GPU CLTM \(Int(cltm ?? 0))%)"

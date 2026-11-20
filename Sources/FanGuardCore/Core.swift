@@ -171,22 +171,39 @@ public struct Curve {
 
 /// Full-speed burst when the GPU is thermally capped: once CLTM stays above the threshold for
 /// `throttleTriggerSeconds`, hold full speed for `throttleBurstSeconds`; if it is still capped
-/// when the burst ends, the next burst starts at once. Pure, so it can be tested without hardware.
+/// when the burst ends, the next burst starts at once. A burst ends early when throttling has
+/// cleared and the GPU has been idle for `earlyEndSeconds`. Pure, so it can be tested without hardware.
 public struct ThrottleBurst {
+    /// The GPU counts as idle below this busy share (0–1).
+    public static let idleBusy = 0.2
+    /// How long throttling must be clear and the GPU idle before a burst ends early.
+    public static let earlyEndSeconds: TimeInterval = 10
     private var highSince: Date?
     private var burstUntil: Date?
+    private var quietSince: Date?
 
     public init() {}
 
     /// Returns the seconds left in the current burst, or nil when no burst is running.
-    public mutating func update(cltm: Double?, config c: Config, now: Date) -> Double? {
-        guard c.mode == .curve, c.throttleBurstSeconds > 0 else { highSince = nil; burstUntil = nil; return nil }
-        if let v = cltm, v > c.throttleCLTMPercent {
+    /// `gpuBusy` is the GPU's busy share (0–1); nil means unknown, which never ends a burst early.
+    public mutating func update(cltm: Double?, config c: Config, now: Date, gpuBusy: Double? = nil) -> Double? {
+        guard c.mode == .curve, c.throttleBurstSeconds > 0 else { highSince = nil; burstUntil = nil; quietSince = nil; return nil }
+        let capped = (cltm ?? 0) > c.throttleCLTMPercent
+        if capped {
             if highSince == nil { highSince = now }
         } else {
             highSince = nil
         }
-        let running = burstUntil.map { now < $0 } ?? false
+        var running = burstUntil.map { now < $0 } ?? false
+        // End early: throttling cleared and the GPU idle for a while.
+        if running, !capped, let busy = gpuBusy, busy < Self.idleBusy {
+            if quietSince == nil { quietSince = now }
+            if now.timeIntervalSince(quietSince!) >= Self.earlyEndSeconds {
+                burstUntil = nil; quietSince = nil; running = false
+            }
+        } else {
+            quietSince = nil
+        }
         if !running, let since = highSince, now.timeIntervalSince(since) >= c.throttleTriggerSeconds {
             burstUntil = now.addingTimeInterval(c.throttleBurstSeconds)
             highSince = now   // a new burst needs the full trigger time again once it ends

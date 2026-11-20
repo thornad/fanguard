@@ -100,6 +100,30 @@ final class CurveTests: XCTestCase {
         _ = f.update(cltm: 99, config: m, now: t); XCTAssertNil(f.update(cltm: 99, config: m, now: t.addingTimeInterval(10)))
     }
 
+    func testBurstEndsEarlyOnlyWhenClearAndIdle() {
+        var c = Config(); c.mode = .curve; let t = Date()
+        var b = ThrottleBurst()
+        _ = b.update(cltm: 90, config: c, now: t, gpuBusy: 1); XCTAssertNotNil(b.update(cltm: 90, config: c, now: t.addingTimeInterval(6), gpuBusy: 1))
+        // cleared but still busy: keeps going
+        XCTAssertNotNil(b.update(cltm: 0, config: c, now: t.addingTimeInterval(40), gpuBusy: 0.95))
+        XCTAssertNotNil(b.update(cltm: 0, config: c, now: t.addingTimeInterval(60), gpuBusy: 0.95))
+        // cleared and idle: ends after 10 s of idle
+        XCTAssertNotNil(b.update(cltm: 0, config: c, now: t.addingTimeInterval(70), gpuBusy: 0.05))
+        XCTAssertNotNil(b.update(cltm: 0, config: c, now: t.addingTimeInterval(75), gpuBusy: 0.05))
+        XCTAssertNil(b.update(cltm: 0, config: c, now: t.addingTimeInterval(80), gpuBusy: 0.05))
+        // idle but still capped: keeps going
+        var d = ThrottleBurst()
+        _ = d.update(cltm: 90, config: c, now: t, gpuBusy: 0.05); _ = d.update(cltm: 90, config: c, now: t.addingTimeInterval(6), gpuBusy: 0.05)
+        XCTAssertNotNil(d.update(cltm: 90, config: c, now: t.addingTimeInterval(30), gpuBusy: 0.05))
+        // idle spell interrupted by activity restarts the 10 s
+        var e = ThrottleBurst()
+        _ = e.update(cltm: 90, config: c, now: t, gpuBusy: 1); _ = e.update(cltm: 90, config: c, now: t.addingTimeInterval(6), gpuBusy: 1)
+        _ = e.update(cltm: 0, config: c, now: t.addingTimeInterval(20), gpuBusy: 0.05)
+        _ = e.update(cltm: 0, config: c, now: t.addingTimeInterval(26), gpuBusy: 0.9)
+        XCTAssertNotNil(e.update(cltm: 0, config: c, now: t.addingTimeInterval(32), gpuBusy: 0.05))
+        XCTAssertNil(e.update(cltm: 0, config: c, now: t.addingTimeInterval(42), gpuBusy: 0.05))
+    }
+
     func testOldConfigKeepsValues() throws {
         let old = #"{"fullTemp":90,"holdSeconds":30,"midRPM":2800,"midTemp":65,"mode":"curve","releaseTemp":55,"startTemp":60}"#
         let c = try JSONDecoder().decode(Config.self, from: Data(old.utf8))
