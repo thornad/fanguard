@@ -53,7 +53,13 @@ final class Model: ObservableObject {
 
     var menuText: String {
         guard daemonAlive, let s = status, s.gpuTemp.isFinite else { return "--" }
-        let temp = "\(Int(s.gpuTemp.rounded()))°"
+        // While throttling, the GPU clock share says more than the temperature.
+        let temp: String
+        if s.throttling, let m = s.gpuMaxMHz, m > 0, s.gpuMHz > 0 {
+            temp = "\(Int((100 * s.gpuMHz / m).rounded()))%"
+        } else {
+            temp = "\(Int(s.gpuTemp.rounded()))°"
+        }
         guard showFanInMenuBar, !s.fanRPM.isEmpty else { return temp }
         let rpm = s.fanRPM.reduce(0, +) / Double(s.fanRPM.count)
         return temp + " " + "\(Int(rpm.rounded()))"
@@ -148,7 +154,7 @@ struct PanelView: View {
                 }
                 Text("Fans " + s.fanRPM.map { "\(Int($0))" }.joined(separator: " / ") + " of \(Int(s.maxRPM)) rpm")
                     .font(.callout).foregroundStyle(.secondary).monospacedDigit()
-                if !s.note.isEmpty {
+                if !s.note.isEmpty && !s.note.contains("throttling") {   // throttling has its own red line above
                     Label(s.note, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption).foregroundStyle(.orange)
                 }
