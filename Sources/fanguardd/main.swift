@@ -112,6 +112,9 @@ final class Controller {
         if let w = want {
             let rounded = Swift.min((w / 50).rounded() * 50, maxRPM)
             if held == nil {
+                // Set the target before switching to manual: in manual mode without a target the SMC
+                // runs the fans at a high default (often maximum), which made an audible spike at takeover.
+                for f in 0..<fans.count { smc(["fan", "\(f)", "-v", "\(Int(rounded))"]) }
                 for f in 0..<fans.count { smc(["fan", "\(f)", "-m", "1"]) }
                 log("boost on at \(String(format: "%.1f", temp)) C")
             }
