@@ -27,8 +27,29 @@ public struct Config: Codable, Equatable, Sendable {
     public var releaseTemp: Double = 55
     public var holdSeconds: Double = 30
     public var mode: Override = .curve
+    /// Full speed for this many seconds once the GPU is thermally capped (0 = off).
+    public var throttleBurstSeconds: Double = 120
+    /// The GPU counts as throttled when its CLTM-capped share stays above this percent for `throttleTriggerSeconds`.
+    public var throttleCLTMPercent: Double = 5
+    public var throttleTriggerSeconds: Double = 6
 
     public init() {}
+
+    // Decode every field if present, so a config written by an older version keeps its values.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Config()
+        startTemp = try c.decodeIfPresent(Double.self, forKey: .startTemp) ?? d.startTemp
+        midRPM = try c.decodeIfPresent(Double.self, forKey: .midRPM) ?? d.midRPM
+        midTemp = try c.decodeIfPresent(Double.self, forKey: .midTemp) ?? d.midTemp
+        fullTemp = try c.decodeIfPresent(Double.self, forKey: .fullTemp) ?? d.fullTemp
+        releaseTemp = try c.decodeIfPresent(Double.self, forKey: .releaseTemp) ?? d.releaseTemp
+        holdSeconds = try c.decodeIfPresent(Double.self, forKey: .holdSeconds) ?? d.holdSeconds
+        mode = try c.decodeIfPresent(Override.self, forKey: .mode) ?? d.mode
+        throttleBurstSeconds = try c.decodeIfPresent(Double.self, forKey: .throttleBurstSeconds) ?? d.throttleBurstSeconds
+        throttleCLTMPercent = try c.decodeIfPresent(Double.self, forKey: .throttleCLTMPercent) ?? d.throttleCLTMPercent
+        throttleTriggerSeconds = try c.decodeIfPresent(Double.self, forKey: .throttleTriggerSeconds) ?? d.throttleTriggerSeconds
+    }
 
     /// Values forced into a sane, ordered range.
     public func sanitized(maxRPM: Double) -> Config {
@@ -40,6 +61,9 @@ public struct Config: Codable, Equatable, Sendable {
         c.releaseTemp = clamp(c.releaseTemp, 30, c.startTemp)
         c.holdSeconds = clamp(c.holdSeconds, 0, 600)
         c.midRPM = clamp(c.midRPM, 1000, maxRPM)
+        c.throttleBurstSeconds = clamp(c.throttleBurstSeconds, 0, 900)
+        c.throttleCLTMPercent = clamp(c.throttleCLTMPercent, 1, 100)
+        c.throttleTriggerSeconds = clamp(c.throttleTriggerSeconds, 0, 120)
         return c
     }
 
@@ -68,13 +92,25 @@ public struct Status: Codable, Sendable {
     public var targetRPM: Double?
     public var mode: Override
     public var note: String
+    /// Share of time (%) the GPU's performance states were capped by thermal management (IOReport GPU_CLTM).
+    public var cltm: Double?
+    /// The GPU's highest clock, for showing the current clock as a percentage.
+    public var gpuMaxMHz: Double?
+    /// Performance-core cluster clock.
+    public var cpuMHz: Double?
+    /// Seconds left in a full-speed throttle burst, nil when none is running.
+    public var burstRemaining: Double?
 
     public init(time: Date, gpuTemp: Double, gpuMHz: Double, gpuBusy: Double, gpuWatts: Double,
-                fanRPM: [Double], maxRPM: Double, targetRPM: Double?, mode: Override, note: String) {
+                fanRPM: [Double], maxRPM: Double, targetRPM: Double?, mode: Override, note: String,
+                cltm: Double? = nil, gpuMaxMHz: Double? = nil, cpuMHz: Double? = nil, burstRemaining: Double? = nil) {
         self.time = time; self.gpuTemp = gpuTemp; self.gpuMHz = gpuMHz; self.gpuBusy = gpuBusy
         self.gpuWatts = gpuWatts; self.fanRPM = fanRPM; self.maxRPM = maxRPM
         self.targetRPM = targetRPM; self.mode = mode; self.note = note
+        self.cltm = cltm; self.gpuMaxMHz = gpuMaxMHz; self.cpuMHz = cpuMHz; self.burstRemaining = burstRemaining
     }
+
+    public var throttling: Bool { (cltm ?? 0) > 5 }
 
     public static func load() -> Status? {
         guard let data = try? Data(contentsOf: Paths.status) else { return nil }
@@ -130,5 +166,32 @@ public struct Curve {
         level = Swift.max(level, Swift.min(base, c.midRPM))
         let rpm = Swift.max(base, level)
         return Swift.min(Swift.max(rpm, 1000), maxRPM)
+    }
+}
+
+/// Full-speed burst when the GPU is thermally capped: once CLTM stays above the threshold for
+/// `throttleTriggerSeconds`, hold full speed for `throttleBurstSeconds`; if it is still capped
+/// when the burst ends, the next burst starts at once. Pure, so it can be tested without hardware.
+public struct ThrottleBurst {
+    private var highSince: Date?
+    private var burstUntil: Date?
+
+    public init() {}
+
+    /// Returns the seconds left in the current burst, or nil when no burst is running.
+    public mutating func update(cltm: Double?, config c: Config, now: Date) -> Double? {
+        guard c.mode == .curve, c.throttleBurstSeconds > 0 else { highSince = nil; burstUntil = nil; return nil }
+        if let v = cltm, v > c.throttleCLTMPercent {
+            if highSince == nil { highSince = now }
+        } else {
+            highSince = nil
+        }
+        let running = burstUntil.map { now < $0 } ?? false
+        if !running, let since = highSince, now.timeIntervalSince(since) >= c.throttleTriggerSeconds {
+            burstUntil = now.addingTimeInterval(c.throttleBurstSeconds)
+            highSince = now   // a new burst needs the full trigger time again once it ends
+        }
+        guard let until = burstUntil, now < until else { return nil }
+        return until.timeIntervalSince(now)
     }
 }

@@ -135,8 +135,17 @@ struct PanelView: View {
                         .background(model.boosting ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.15),
                                     in: Capsule())
                 }
-                Text("\(Int(s.gpuMHz)) MHz · \(Int(s.gpuBusy * 100))% busy · \(Int(s.gpuWatts)) W")
+                Text("\(Int(s.gpuMHz)) MHz\(pct(s)) · \(Int(s.gpuBusy * 100))% busy · \(Int(s.gpuWatts)) W")
                     .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                if s.throttling {
+                    Text("Throttling: GPU \(Int(s.gpuMHz)) MHz\(pct(s)) · CLTM \(Int(s.cltm ?? 0))%"
+                         + (s.cpuMHz.map { String(format: " · CPU %.2f GHz", $0 / 1000) } ?? ""))
+                        .font(.callout.weight(.semibold)).foregroundStyle(.red).monospacedDigit()
+                }
+                if let left = s.burstRemaining {
+                    Label("Full-speed burst: \(Int(left.rounded())) s left", systemImage: "wind")
+                        .font(.caption.weight(.medium)).foregroundStyle(.orange).monospacedDigit()
+                }
                 Text("Fans " + s.fanRPM.map { "\(Int($0))" }.joined(separator: " / ") + " of \(Int(s.maxRPM)) rpm")
                     .font(.callout).foregroundStyle(.secondary).monospacedDigit()
                 if !s.note.isEmpty {
@@ -164,7 +173,17 @@ struct PanelView: View {
             row("Back to macOS below", value: $model.config.releaseTemp, range: 35...80, unit: "°C",
                 help: "Hand back once the GPU stays below this")
             row("…for", value: $model.config.holdSeconds, range: 0...300, step: 5, unit: "s", help: "")
+            row("Full speed when throttling, for", value: $model.config.throttleBurstSeconds, range: 0...600, step: 10,
+                unit: "s", help: "Full speed for this long once the GPU is thermally capped; 0 turns it off")
+            row("…when CLTM above", value: $model.config.throttleCLTMPercent, range: 1...50, unit: "%",
+                help: "Share of time the GPU's clock is capped by thermal management")
         }
+    }
+
+    /// Current GPU clock as a share of its highest clock, e.g. " (68%)".
+    private func pct(_ s: Status) -> String {
+        guard let m = s.gpuMaxMHz, m > 0, s.gpuMHz > 0 else { return "" }
+        return " (\(Int((100 * s.gpuMHz / m).rounded()))%)"
     }
 
     private func row(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, step: Double = 1,

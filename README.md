@@ -43,6 +43,8 @@ Once boosted, FanGuard hands the fans back to macOS only after the GPU stays bel
 
 **During a boost the fans only speed up.** They hold the highest speed reached (up to the target speed, 3,050 rpm by default) through short pauses between prompts, instead of winding down and up again. Full speed drops back to the target only once the GPU is 2 °C under the full-speed point.
 
+**Throttle bursts:** the service reads the GPU's thermal-capping share (IOReport `GPU_CLTM`, no root needed). When it stays above 5% for 6 s, the fans run at full speed for 120 s, and keep going in 120 s bursts while the GPU is still capped; both numbers are set in the panel (0 s turns it off). Calibration on an M3 Ultra showed throttling is driven by heat accumulated over minutes rather than any one temperature, so reacting to the capping itself is more reliable than a temperature trigger, and about 2 minutes at full speed clears it. The panel shows the GPU clock as a share of its maximum, the CLTM share and the CPU clock while throttling, and a countdown during a burst.
+
 **Logs:** `/var/log/fanguard.log` holds the current run or day; it moves to `fanguard.log.1` on each start and at the first message of each day, so there are never more than two files. Every fan speed change is logged.
 
 ## Safety

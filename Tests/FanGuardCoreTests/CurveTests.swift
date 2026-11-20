@@ -72,6 +72,41 @@ final class CurveTests: XCTestCase {
         XCTAssertEqual(k.target(temp: 61, config: c, maxRPM: max, now: t.addingTimeInterval(41))!, 2100, accuracy: 1) // new boost starts low
     }
 
+    func testThrottleBurst() {
+        var b = ThrottleBurst(); var c = Config(); c.mode = .curve
+        let t = Date()
+        XCTAssertNil(b.update(cltm: 0, config: c, now: t))
+        XCTAssertNil(b.update(cltm: 80, config: c, now: t.addingTimeInterval(1)))          // just started
+        XCTAssertNil(b.update(cltm: 90, config: c, now: t.addingTimeInterval(6)))          // 5 s high: not yet
+        XCTAssertEqual(b.update(cltm: 95, config: c, now: t.addingTimeInterval(7))!, 120, accuracy: 0.1)  // 6 s: burst
+        XCTAssertEqual(b.update(cltm: 0, config: c, now: t.addingTimeInterval(67))!, 60, accuracy: 0.1)   // runs its course
+        XCTAssertNil(b.update(cltm: 0, config: c, now: t.addingTimeInterval(128)))         // over, cool
+        // still capped when a burst ends: the next one follows at once (no drop to the curve in between)
+        var d = ThrottleBurst()
+        _ = d.update(cltm: 90, config: c, now: t); _ = d.update(cltm: 90, config: c, now: t.addingTimeInterval(6))
+        XCTAssertEqual(d.update(cltm: 90, config: c, now: t.addingTimeInterval(126))!, 120, accuracy: 0.1)
+        // throttling cleared during the burst and came back later: a new burst after the trigger time
+        var g = ThrottleBurst()
+        _ = g.update(cltm: 90, config: c, now: t); _ = g.update(cltm: 90, config: c, now: t.addingTimeInterval(6))
+        _ = g.update(cltm: 0, config: c, now: t.addingTimeInterval(60))
+        XCTAssertNil(g.update(cltm: 0, config: c, now: t.addingTimeInterval(130)))
+        _ = g.update(cltm: 90, config: c, now: t.addingTimeInterval(200))
+        XCTAssertNil(g.update(cltm: 90, config: c, now: t.addingTimeInterval(204)))
+        XCTAssertNotNil(g.update(cltm: 90, config: c, now: t.addingTimeInterval(206)))
+        // off when 0 s or not in curve mode
+        var e = ThrottleBurst(); var off = c; off.throttleBurstSeconds = 0
+        _ = e.update(cltm: 99, config: off, now: t); XCTAssertNil(e.update(cltm: 99, config: off, now: t.addingTimeInterval(10)))
+        var m = c; m.mode = .auto; var f = ThrottleBurst()
+        _ = f.update(cltm: 99, config: m, now: t); XCTAssertNil(f.update(cltm: 99, config: m, now: t.addingTimeInterval(10)))
+    }
+
+    func testOldConfigKeepsValues() throws {
+        let old = #"{"fullTemp":90,"holdSeconds":30,"midRPM":2800,"midTemp":65,"mode":"curve","releaseTemp":55,"startTemp":60}"#
+        let c = try JSONDecoder().decode(Config.self, from: Data(old.utf8))
+        XCTAssertEqual(c.midRPM, 2800); XCTAssertEqual(c.mode, .curve)
+        XCTAssertEqual(c.throttleBurstSeconds, 120); XCTAssertEqual(c.throttleCLTMPercent, 5)
+    }
+
     func testSanitize() {
         var bad = Config(); bad.startTemp = 200; bad.midRPM = 99999; bad.releaseTemp = 99; bad.fullTemp = -5
         let s = bad.sanitized(maxRPM: max)

@@ -58,6 +58,9 @@ func smc(_ args: [String]) -> Bool {
 final class Controller {
     private let lock = NSLock()
     private var curve = Curve()
+    private var burst = ThrottleBurst()
+    private let gpu = GPUThrottle()
+    private var burstWasOn = false
     private var held: Double?          // rpm currently forced, nil = automatic
     private var fanCount = 0
     private(set) var lastSample = Date.distantPast
@@ -90,8 +93,17 @@ final class Controller {
         let config = Config.load().sanitized(maxRPM: maxRPM)
         var note = ""
         var want: Double?
+        let cltm = gpu.sample()
+        let burstLeft = burst.update(cltm: cltm, config: config, now: Date())
+        if (burstLeft != nil) != burstWasOn {
+            log(burstLeft != nil
+                ? "throttle burst: full speed for \(Int(config.throttleBurstSeconds)) s (GPU CLTM \(Int(cltm ?? 0))%)"
+                : "throttle burst ended (GPU CLTM \(Int(cltm ?? 0))%)")
+            burstWasOn = burstLeft != nil
+        }
         if temp.isFinite && temp > 5 && !fans.isEmpty {
             want = curve.target(temp: temp, config: config, maxRPM: maxRPM, now: Date())
+            if burstLeft != nil { want = maxRPM }
         } else {
             note = "no GPU temperature; fans left to macOS"
             curve = Curve()
@@ -114,10 +126,12 @@ final class Controller {
         }
         let busy = (d["gpu_active_ratio"] as? Double) ?? 0
         let mhz = (d["gpu_freq_mhz"] as? Double) ?? Double((d["gpu_freq_mhz"] as? Int) ?? 0)
-        if note.isEmpty && busy > 0.9 && mhz > 0 && mhz < 1300 { note = "GPU clock reduced (throttling)" }
+        if note.isEmpty && (cltm ?? 0) > config.throttleCLTMPercent { note = "GPU thermally capped (throttling)" }
+        let cpu = (d["pcpu_freq_mhz"] as? Double) ?? Double((d["pcpu_freq_mhz"] as? Int) ?? 0)
         let status = Status(time: Date(), gpuTemp: temp, gpuMHz: mhz, gpuBusy: busy,
                             gpuWatts: (d["gpu_power"] as? Double) ?? 0, fanRPM: rpms, maxRPM: maxRPM,
-                            targetRPM: held, mode: config.mode, note: note)
+                            targetRPM: held, mode: config.mode, note: note,
+                            cltm: cltm, gpuMaxMHz: gpu.maxMHz, cpuMHz: cpu > 0 ? cpu : nil, burstRemaining: burstLeft)
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970
         if let data = try? enc.encode(status) {
             try? FileManager.default.createDirectory(at: Paths.dir, withIntermediateDirectories: true)
